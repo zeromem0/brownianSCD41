@@ -5,23 +5,15 @@
 // modified for M5Unified https://github.com/m5stack/M5Unified
 // tested on M5Stack Core2 ESP32 IoT Development Kit for AWS IoT EduKit SKU: K010-AWS
 
-// modified riraosa_0901
+// modified for ATOM Lite by riraosan_0901
 
 #include <M5GFX.h>
 #include <LGFX_8BIT_CVBS.h>
-#include <FastLED.h>
 
 #include "sfc_f49.h"
 #include "sfc_f38.h"
 
 LGFX_8BIT_CVBS display;
-
-// RGB LEDs SK6812
-#define NUM_LEDS 1
-#define DATA_PIN 27
-
-// SCD41 sensor https://sensirion.com/products/catalog/SCD41/ on I2C Wire bus
-// const int16_t SCD_ADDRESS = 0x62;
 
 extern const unsigned short info[];
 extern const unsigned short alert[];
@@ -86,31 +78,14 @@ struct obj_info_t {
   }
 };
 
-static constexpr size_t obj_count = 100;
+static constexpr size_t obj_count = 50;
 static obj_info_t       objects[obj_count];
 
 static LGFX_Sprite  sprites[2];
 static LGFX_Sprite  icons[3];
 static int_fast16_t sprite_height;
 
-// added
-static LGFX_Sprite co2Sprite, humSprite, tmpSprite;
-
-static int64_t lastGetSCDTime   = 0;
-static int64_t getSCDIntervalUs = 5000000;
-
-static int64_t lastDrawSCDTime   = 0;
-static int64_t drawSCDIntervalUs = 5000000;
-CRGB           leds[NUM_LEDS];
-CRGB           bColor, oColor;
-float          co2 = 0.0, temperature = 0.0, humidity = 0.0, pm25 = 0.0, pm01 = 0.0, pm10 = 0.0;
-uint8_t        d1Hours = 0, d2Hours = 0, d1Minutes = 0, d2Minutes = 0, d1Sec = 0, d2Sec = 0;
-uint8_t        d1Month = 0, d2Month = 0, d1Day = 0, d2Day = 0, d1Year = 0, d2Year = 0, d3Year = 0, d4Year = 0;
-uint8_t        d1CO2 = 0, d2CO2 = 0, d3CO2 = 0, d4CO2 = 0, d5CO2 = 0;
-uint8_t        d1Temp = 0, d2Temp = 0, d3Temp = 0, m1Temp = 0;
-uint8_t        d1RHum = 0, d2RHum = 0, d3RHum = 0, m1RHum = 0;
-uint16_t       backCO2;
-uint8_t        data[12], counter;
+static LGFX_Sprite timeSprite;
 
 const uint8_t *f49[] = {  // SF Compact Display font 34x49 grey
     sfc_34x49_f49_0, sfc_34x49_f49_1, sfc_34x49_f49_2, sfc_34x49_f49_3, sfc_34x49_f49_4,
@@ -130,143 +105,8 @@ const uint8_t *f38[] = {  // SF Compact Display font 26x38 grey
 
     sfc_23x24_f38_gc, sfc_26x38_f38_0, sfc_26x38_f38_0};
 
-void drawSCD() {
-  float tpm = 0.0;
-  if ((co2 > 1) && (co2 < 30000)) {
-    d1Temp = (int)(temperature / 100) % 10;
-    d2Temp = (int)(temperature / 10) % 10;
-    d3Temp = (int)(temperature / 1) % 10;
-    m1Temp = (int)((temperature - (int)temperature) * 10);
-
-    d1RHum = (int)(humidity / 100) % 10;
-    d2RHum = (int)(humidity / 10) % 10;
-    d3RHum = (int)(humidity / 1) % 10;
-    m1RHum = (int)((humidity - (int)humidity) * 10);
-
-    d1CO2 = (int)(co2 / 10000) % 10;
-    d2CO2 = (int)(co2 / 1000) % 10;
-    d3CO2 = (int)(co2 / 100) % 10;
-    d4CO2 = (int)(co2 / 10) % 10;
-    d5CO2 = (int)(co2 / 1) % 10;
-
-    // CO2 traffic light! on RGB LEDS
-    backCO2 = RED;
-    if (co2 < 1600) backCO2 = YELLOW;
-    if (co2 < 1000) backCO2 = GREEN;
-
-    co2Sprite.fillSprite(0xd6fc);
-    if (co2 > 999) {
-      co2Sprite.pushImage(0, 0, 34, 49, (uint16_t *)f49[d2CO2], 0xd6fc);
-    } else {
-      co2Sprite.pushImage(0, 0, 34, 49, (uint16_t *)f49[17], 0xd6fc);  // space
-    }
-
-    if (co2 > 99) {
-      co2Sprite.pushImage(34, 0, 34, 49, (uint16_t *)f49[d3CO2], 0xd6fc);
-    } else {
-      co2Sprite.pushImage(34, 0, 34, 49, (uint16_t *)f49[17], 0xd6fc);  // space
-    }
-
-    if (co2 > 9) {
-      co2Sprite.pushImage(68, 0, 34, 49, (uint16_t *)f49[d4CO2], 0xd6fc);
-    } else {
-      co2Sprite.pushImage(68, 0, 34, 49, (uint16_t *)f49[17], 0xd6fc);  // space
-    }
-    co2Sprite.pushImage(102, 0, 34, 49, (uint16_t *)f49[d5CO2], 0xd6fc);
-
-    co2Sprite.pushImage(137, 0, 51, 24, (uint16_t *)f38[25], 0xd6fc);   // ppm
-    co2Sprite.pushImage(137, 25, 42, 24, (uint16_t *)f38[20], 0xd6fc);  // CO2
-
-    tmpSprite.fillSprite(0xd6fc);
-    if (temperature > 9) {
-      tmpSprite.pushImage(0, 0, 26, 38, (uint16_t *)f38[d2Temp], 0xd6fc);
-    } else {
-      tmpSprite.pushImage(0, 0, 26, 38, (uint16_t *)f38[17], 0xd6fc);  // space
-    }
-    tmpSprite.pushImage(26, 0, 26, 38, (uint16_t *)f38[d3Temp], 0xd6fc);
-    tmpSprite.pushImage(52, 0, 9, 38, (uint16_t *)f38[15], 0xd6fc);  // dot
-    tmpSprite.pushImage(61, 0, 26, 38, (uint16_t *)f38[m1Temp], 0xd6fc);
-    tmpSprite.pushImage(87, 0, 23, 24, (uint16_t *)f38[30], 0xd6fc);  // C
-
-    humSprite.fillSprite(0xd6fc);
-    if (humidity > 9) {
-      humSprite.pushImage(0, 0, 26, 38, (uint16_t *)f38[d2RHum], 0xd6fc);
-    } else {
-      humSprite.pushImage(0, 0, 26, 38, (uint16_t *)f38[17], 0xd6fc);  // space
-    }
-    humSprite.pushImage(26, 0, 26, 38, (uint16_t *)f38[d3RHum], 0xd6fc);
-    humSprite.pushImage(52, 0, 9, 38, (uint16_t *)f38[15], 0xd6fc);  // dot
-    humSprite.pushImage(61, 0, 26, 38, (uint16_t *)f38[m1RHum], 0xd6fc);
-    humSprite.pushImage(87, 0, 49, 24, (uint16_t *)f38[29], 0xd6fc);  // %RH
-
-    bColor = CRGB::Red;
-    if (co2 < 1600) bColor = CRGB::Yellow;
-    if (co2 < 1000) bColor = CRGB::Green;
-
-    if (oColor != bColor) {
-      //        fill_solid(leds, 1, bColor); //10
-      leds[2] = bColor;
-      leds[7] = bColor;
-      FastLED.show();
-      oColor = bColor;
-    }
-  }
-
-  lastDrawSCDTime = esp_timer_get_time();
-}
-
-/*
-void getSCD() {
-  // from https://github.com/Sensirion/arduino-snippets/blob/main/SCD4x_I2C_minimal_example/SCD4x_I2C_minimal_example.ino
-  // send read data command
-  Wire.beginTransmission(SCD_ADDRESS);
-  Wire.write(0xec);
-  Wire.write(0x05);
-  Wire.endTransmission();
-
-  // read measurement data: 2 bytes co2, 1 byte CRC,
-  // 2 bytes T, 1 byte CRC, 2 bytes RH, 1 byte CRC,
-  // 2 bytes sensor status, 1 byte CRC
-  // stop reading after 12 bytes (not used)
-  // other data like  ASC not included
-  Wire.requestFrom(SCD_ADDRESS, 12);
-  counter = 0;
-  while (Wire.available()) {
-    data[counter++] = Wire.read();
-  }
-
-  // floating point conversion according to datasheet
-  co2 = (float)((uint16_t)data[0] << 8 | data[1]);
-  // convert T in degC
-  temperature = -45 + 175 * (float)((uint16_t)data[3] << 8 | data[4]) / 65536;
-  // convert RH in %
-  humidity = 100 * (float)((uint16_t)data[6] << 8 | data[7]) / 65536;
-
-//  Serial.print(co2);
-//  Serial.print("\t");
-//  Serial.print(temperature);
-//  Serial.print("\t");
-//  Serial.print(humidity);
-//  Serial.println();
-//  gadgetBle.writeCO2(co2);
-//  gadgetBle.writeTemperature(temperature);
-//  gadgetBle.writeHumidity(humidity);
-//  gadgetBle.writePM2p5(pm25 / 1000.0);
-//  gadgetBle.commit();
-
-  lastGetSCDTime = esp_timer_get_time();
-}
-*/
-
 void setup(void) {
   display.init();
-
-  FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);  // GRB ordering is assumed
-  oColor = CRGB::Black;
-  bColor = CRGB::Blue;
-
-  leds[0] = bColor;
-  FastLED.show();
 
   if (display.width() < display.height()) {
     display.setRotation(display.getRotation() ^ 1);
@@ -294,8 +134,6 @@ void setup(void) {
     sprite_height = (lcd_height + div - 1) / div;
     bool fail     = false;
     for (std::uint32_t i = 0; !fail && i < 2; ++i) {
-      //      sprites[i].setColorDepth(lcd.getColorDepth());
-      // added for display
       sprites[i].setColorDepth(display.getColorDepth());
       sprites[i].setFont(&fonts::Font2);
       fail = !sprites[i].createSprite(lcd_width, sprite_height);
@@ -316,26 +154,14 @@ void setup(void) {
   icons[1].setSwapBytes(true);
   icons[2].setSwapBytes(true);
 
-  //  icons[0].pushImage(0, 0, infoWidth,   infoHeight,  info);
-  //  icons[1].pushImage(0, 0, alertWidth,  alertHeight, alert);
-  //  icons[2].pushImage(0, 0, closeWidth,  closeHeight, closeX);
-
   // replace with molecules
   icons[0].pushImage(0, 0, infoWidth, infoHeight, dioxide);
   icons[1].pushImage(0, 0, alertWidth, alertHeight, nitrogen);
   icons[2].pushImage(0, 0, closeWidth, closeHeight, oxygen);
 
-  co2Sprite.createSprite(188, 49);
-  co2Sprite.setSwapBytes(false);
-  co2Sprite.fillSprite(0xd6fc);
-
-  // tmpSprite.createSprite(110, 38);
-  // tmpSprite.setSwapBytes(false);
-  // tmpSprite.fillSprite(0xd6fc);
-
-  // humSprite.createSprite(136, 38);
-  // humSprite.setSwapBytes(false);
-  // humSprite.fillSprite(0xd6fc);
+  timeSprite.createSprite(188, 49);
+  timeSprite.setSwapBytes(false);
+  timeSprite.fillSprite(0xd6fc);
 
   display.startWrite();
 }
@@ -359,55 +185,17 @@ void loop(void) {
     display.display();
 
     if (y == 0) {
-      // added for time display, RTC must be set prior this
-      // auto dt   = M5.Rtc.getDateTime();
-      // d1Minutes = dt.time.minutes / 10;
-      // d2Minutes = dt.time.minutes - d1Minutes * 10;
-      // d1Hours   = dt.time.hours / 10;
-      // d2Hours   = dt.time.hours - d1Hours * 10;
-      // d1Sec     = dt.time.seconds / 10;
-      // d2Sec     = dt.time.seconds - d1Sec * 10;
-      // d1Day     = dt.date.date / 10;
-      // d2Day     = dt.date.date - d1Day * 10;
-      // d1Month   = dt.date.month / 10;
-      // d2Month   = dt.date.month - d1Month * 10;
       sprites[flip].setCursor(0, 0);
       sprites[flip].setFont(&fonts::Font4);
       sprites[flip].setTextColor(0xFFFFFFU);
 
-      sprites[flip].printf("obj:%d  fps:%d             %d%d:%d%d:%d%d", obj_count, fps, d1Hours, d2Hours, d1Minutes, d2Minutes, d1Sec, d2Sec);
-
-      co2Sprite.pushSprite(&sprites[flip], 92, 45, 0xd6fc);
+      timeSprite.pushSprite(&sprites[flip], 92, 45, 0xd6fc);
     }
 
-    // added for temperature and humidity on lower part of display
-    // if (y != 0) {
-    //   tmpSprite.pushSprite(&sprites[flip], 40, 0, 0xd6fc);
-    //   humSprite.pushSprite(&sprites[flip], 165, 0, 0xd6fc);
-    // }
-    // //    sprites[flip].pushSprite(&lcd, 0, y);
     sprites[flip].pushSprite(&display, 0, y);
   }
 
   display.display();
-
-  // if (esp_timer_get_time() - lastGetSCDTime >= getSCDIntervalUs) {
-  //   getSCD();
-
-  // }
-  // if (esp_timer_get_time() - lastDrawSCDTime >= drawSCDIntervalUs) {
-  //   drawSCD();
-  // }
-
-  display.display();
-
-  ++frame_count;
-  sec = lgfx::millis() / 1000;
-  if (psec != sec) {
-    psec        = sec;
-    fps         = frame_count;
-    frame_count = 0;
-  }
 }
 
 constexpr unsigned short info[1024] = {

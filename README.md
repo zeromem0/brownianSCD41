@@ -1,13 +1,29 @@
-// brownian SCD41 by zeromem
+# Brownian Sample for ATOM Lite 
 
-// based on MovingIcons from LovyanGFX by https://twitter.com/lovyan03
+I used the Panel_CVBS library included in the M5GFX library created by @lovyan03 to display @zeromem's results on a digital TV.
 
-// https://github.com/lovyan03/LovyanGFX/blob/master/examples/Sprite/MovingIcons/MovingIcons.ino 
+//TODO image here.
 
-// icons replaced with air molecules (oxygen, nitrogen, carbon dioxide) for entertainment purposes only, not scientific accurate
+based on MovingIcons from M5GFX by https://twitter.com/lovyan03
 
-// modified for M5Unified https://github.com/m5stack/M5Unified
+https://github.com/lovyan03/LovyanGFX/blob/master/examples/Sprite/MovingIcons/MovingIcons.ino 
 
-// tested on M5Stack Core2 ESP32 IoT Development Kit for AWS IoT EduKit SKU: K010-AWS
+@zeromem said...
+> icons replaced with air molecules (oxygen, nitrogen, carbon dioxide) for entertainment purposes only, not scientific accurate
 
-// more pictures here https://twitter.com/zeromem0/status/1542920700268351488
+## Modifier
+
+@riraosan_0901 on Twitter
+
+## Licence
+
+MIT
+
+## Acknowledgments
+
+Thanks for your contribution.
+@zeromem : author of [brownianSCD41](https://github.com/zeromem0/brownianSCD41.git)
+
+## TODO 
+
+To add NTP Clock on Brownian.
